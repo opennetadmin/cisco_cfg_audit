@@ -440,7 +440,7 @@ EOL;
 
 
     ////////////////// Process the config nat entries with the database ////////////////////////////
-    foreach ($form['nats'] as $nat) {
+    foreach ((array)$form['nats'] as $nat) {
         list($status, $rows, $natint) = ona_find_interface($nat['inside']);
         if ($rows == 0) {
             // See if the outside interface is in the DB
@@ -651,7 +651,7 @@ EOL;
     ////////////////////////////////////////////////////////////////////////////
 
     ////////////////// Process the config nat entries with the database ////////////////////////////
-    foreach ($form['nats'] as $nat) {
+    foreach ((array)$form['nats'] as $nat) {
         list($status, $rows, $natint) = ona_find_interface($nat['inside']);
         if ($rows == 0) {
             if (!isset($form['dcm_output'])) {
