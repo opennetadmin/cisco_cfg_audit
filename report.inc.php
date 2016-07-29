@@ -211,14 +211,26 @@ function rpt_get_data($form) {
 
         // Get the interface ip info
         if (preg_match("/^[ ]+ip address /i", $line)) {
+          // check if it has a cidr based mask
+          if (preg_match("/^[ ]+ip address \S+\//i", $line)) {
+            $rptdata['ints'][$intname]['ip_addr']  = ip_mangle(preg_replace("/^[ ]+ip address (\S+)\/\S+/si","$1",$line),'numeric');
+            $rptdata['ints'][$intname]['mask'] = preg_replace("/^[ ]+ip address \S+\/(\S+)/si","$1",$line);
+          } else {
             $rptdata['ints'][$intname]['ip_addr']  = ip_mangle(preg_replace("/^[ ]+ip address (\S+) \S+/si","$1",$line),'numeric');
             $rptdata['ints'][$intname]['mask'] = preg_replace("/^[ ]+ip address \S+ (\S+)/si","$1",$line);
-            continue;
+          }
+          continue;
         }
 
         // Get the interface standby ip for hsrp
         if (preg_match("/^[ ]+standby \d+ ip /i", $line)) {
-            $rptdata['ints'][$intname]['standbyip']  = preg_replace("/^[ ]+standby \d+ ip (\S+)/si","$1",$line);
+            $rptdata['ints'][$intname]['hsrp']  = preg_replace("/^[ ]+standby \d+ ip (\S+)/si","$1",$line);
+            continue;
+        }
+
+        // Get the interface standby ip for hsrp, for NXOS type systems
+        if (preg_match("/^    ip \S+/i", $line)) {
+            $rptdata['ints'][$intname]['hsrp']  = preg_replace("/^    ip (\S+)/si","$1",$line);
             continue;
         }
 
@@ -308,6 +320,9 @@ EOL;
     foreach ($form['ints'] as $int) {
         $subnetaction = '';
         // If the interface has an IP, lets check it.
+#echo "<pre>";
+#print_r($int);
+#echo "</pre>";
         if ($int['ip_addr']) {
             list($status, $rows, $interface) = ona_get_interface_record(array('host_id' => $form['dbhostid'],'ip_addr' => $int['ip_addr']));
             if ($rows == 0) {
@@ -333,12 +348,14 @@ EOL;
                         <td class="list-row" align="right">
                             IP:<br>
                             NAME:<br>
-                            DESC:
+                            DESC:<br>
+                            HSRP:
                         </td>
                         <td class="list-row" align="left" style="{$style['borderR']};">
                             {$int['ip_addr']}<br>
                             {$int['name']}<br>
-                            {$int['description']}
+                            {$int['description']}<br>
+                            {$int['hsrp']}
                         </td>
                         <td class="list-row" align="left">&nbsp;</td>
                         <td class="list-row" align="left"><img src="{$images}/silk/stop.png" border="0"></td>
@@ -356,6 +373,17 @@ EOL;
                     $dbints[] = $int['ip_addr'];
                     $int['ip_addr'] = ip_mangle($int['ip_addr'],'dotted');
                     $interface['ip_addr'] = ip_mangle($interface['ip_addr'],'dotted');
+
+                    // check our HSRP info
+                    $dbhsrp = '';
+                    if ($int['hsrp']) {
+                      $hsrp_addr = ip_mangle($int['hsrp'], 'numeric');
+                      list($status, $rows, $hsrp_interface) = ona_get_interface_record(array('ip_addr' => $hsrp_addr));
+                        if ($rows == 1) {
+                          $dbhsrp = ip_mangle($hsrp_interface['ip_addr'],'dotted');
+                    
+                        }
+                    }
 
                     // Set up update text for empty DB fields
                     if ($int['name'] and !$interface['name']) $interface['name'] = "Update name";
@@ -382,17 +410,20 @@ EOL;
                         <td class="list-row" align="right">
                             IP:<br>
                             NAME:<br>
-                            DESC:
+                            DESC:<br>
+                            HSRP:
                         </td>
                         <td class="list-row" align="left" style="{$style['borderR']};">
                             {$int['ip_addr']}<br>
                             {$int['name']}<br>
-                            {$int['description']}
+                            {$int['description']}<br>
+                            {$int['hsrp']}
                         </td>
                         <td id="" class="list-row" align="left">
                             {$interface['ip_addr']}<br>
                             {$dbintname}<br>
-                            {$dbintdesc}
+                            {$dbintdesc}<br>
+                            {$dbhsrp}
                         </td>
                         <td class="list-row" align="left"><img src="{$images}/silk/accept.png" border="0" /></td>
                         <td class="list-row" align="left">OK</td>
@@ -407,7 +438,7 @@ EOL;
     ////////////////// Process the database interfaces that didnt pass above ////////////////////////////
   //  if (!isset($options['dcm_output'])) {
         // get a list of interfaces for this host.. dont include NAT IPs though
-        list($status, $int_rows, $interfaces) = db_get_records($onadb, 'interfaces', "host_id = {$form['dbhostid']} and id not in (select nat_interface_id from interfaces where host_id = {$form['dbhostid']})");
+        list($status, $int_rows, $interfaces) = db_get_records($onadb, 'interfaces', "host_id = {$form['dbhostid']} and id not in (select nat_interface_id from interfaces where host_id = {$form['dbhostid']}) and id not in (select interface_id from interface_clusters where interface_id = {$int['ip_addr']}");
         foreach ($interfaces as $record) {
             if(in_array($record['ip_addr'],$dbints) === FALSE) {
                 $record['ip_addr'] = ip_mangle($record['ip_addr'],'dotted');
